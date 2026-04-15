@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infilect Shelf Grouping Demo</title>
+    <style>
+        :root {
+            --bg: #f4f1ea;
+            --card: #fffaf2;
+            --ink: #1e2a2f;
+            --accent: #12664f;
+            --accent-2: #d57a42;
+            --border: #d9cdb9;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(213,122,66,0.16), transparent 28%),
+                linear-gradient(135deg, #efe7d8, var(--bg));
+        }
+        .wrap {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+        .hero {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 24px;
+            align-items: start;
+        }
+        .panel {
+            background: rgba(255,250,242,0.92);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 18px 45px rgba(52, 45, 35, 0.08);
+        }
+        h1 {
+            font-size: clamp(2.2rem, 4vw, 4.2rem);
+            line-height: 0.95;
+            margin: 0 0 16px;
+            letter-spacing: -0.04em;
+        }
+        p {
+            line-height: 1.55;
+            font-size: 1rem;
+        }
+        form {
+            display: grid;
+            gap: 14px;
+            margin-top: 20px;
+        }
+        input[type="file"] {
+            border: 1px dashed var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            background: #fff;
+        }
+        button {
+            border: none;
+            border-radius: 999px;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, var(--accent), #0b4939);
+            color: white;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        button:disabled { opacity: 0.6; cursor: wait; }
+        .status {
+            min-height: 24px;
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+        .result-image {
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: white;
+        }
+        .actions {
+            display: grid;
+            gap: 16px;
+        }
+        .meta {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            margin-top: 16px;
+        }
+        .stat {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 12px;
+            min-width: 0;
+        }
+        .stat strong {
+            display: block;
+            font-size: 1.25rem;
+            margin-top: 4px;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        .download-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            border-radius: 999px;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, var(--accent-2), #a55626);
+            color: white;
+            font-weight: 700;
+        }
+        .download-link[hidden] {
+            display: none;
+        }
+        @media (max-width: 900px) {
+            .hero, .results { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="hero">
+            <section class="panel">
+                <h1>Retail Shelf<br>Detection & Grouping</h1>
+                <p>Upload a shelf image to run product detection, group visually similar products, and render a color-coded output image with structured JSON.</p>
+                <form id="upload-form">
+                    <input type="file" id="image-input" name="image" accept="image/*" required>
+                    <button type="submit" id="submit-btn">Run Pipeline</button>
+                    <div class="status" id="status"></div>
+                </form>
+            </section>
+            <section class="panel">
+                <p><strong>What the app returns</strong></p>
+                <p>Each detection includes its bounding box, confidence score, cluster-level <code>group_id</code>, and a color that matches the visualization displayed in the browser.</p>
+                <div class="meta" id="meta">
+                    <div class="stat"><span>Detections</span><strong id="det-count">0</strong></div>
+                    <div class="stat"><span>Groups</span><strong id="group-count">0</strong></div>
+                    <div class="stat"><span>Request</span><strong id="request-id">-</strong></div>
+                </div>
+            </section>
+        </div>
+
+        <div class="results">
+            <section class="panel">
+                <img id="result-image" class="result-image" alt="Annotated result" hidden>
+            </section>
+            <section class="panel">
+                <div class="actions">
+                    <p>The pipeline stores a JSON output file alongside the visualization for each request.</p>
+                    <a id="json-download" class="download-link" href="#" download hidden>Download JSON Result</a>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById("upload-form");
+        const input = document.getElementById("image-input");
+        const statusNode = document.getElementById("status");
+        const button = document.getElementById("submit-btn");
+        const resultImage = document.getElementById("result-image");
+        const jsonDownload = document.getElementById("json-download");
+        const detCount = document.getElementById("det-count");
+        const groupCount = document.getElementById("group-count");
+        const requestId = document.getElementById("request-id");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (!input.files.length) {
+                statusNode.textContent = "Choose an image first.";
+                return;
+            }
+
+            const payload = new FormData();
+            payload.append("image", input.files[0]);
+
+            button.disabled = true;
+            statusNode.textContent = "Running detector and grouping pipeline...";
+            resultImage.hidden = true;
+            jsonDownload.hidden = true;
+            jsonDownload.removeAttribute("href");
+
+            try {
+                const response = await fetch("/infer", {
+                    method: "POST",
+                    body: payload,
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "Request failed.");
+                }
+
+                requestId.textContent = data.request_id;
+                detCount.textContent = data.detections.length;
+                groupCount.textContent = new Set(data.detections.map((item) => item.group_id)).size;
+
+                resultImage.src = `${data.visualization_url}?t=${Date.now()}`;
+                resultImage.hidden = false;
+                jsonDownload.href = data.json_url;
+                jsonDownload.download = `${data.request_id}.json`;
+                jsonDownload.hidden = false;
+                statusNode.textContent = "Completed.";
+            } catch (error) {
+                statusNode.textContent = error.message;
+                jsonDownload.hidden = true;
+            } finally {
+                button.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
